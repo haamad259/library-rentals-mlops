@@ -6,11 +6,11 @@ import os
 
 app = Flask(__name__)
 
-# تحميل النموذج والمقياس
+# load model and scaler
 model = joblib.load("model.pkl")     
 scaler = joblib.load("scaler.pkl")
 
-# قائمة الأعمدة الـ 40 الدقيقة بالترتيب المطلوب من الـ Scaler لديك
+# list of 40 feature columns in the order required by your scaler
 FEATURES_COLUMNS = [
     'Hour', 'Temperature_C', 'Humidity_pct', 'Wind_Speed_ms', 'Visibility_m', 
     'Solar_Radiation_MJm2', 'Rainfall_mm', 'Month', 'Day', 'Is_Peak_Hour', 
@@ -26,12 +26,12 @@ FEATURES_COLUMNS = [
     'Temperature_Bin_Warm', 'Temperature_Bin_Hot'
 ]
 
-# 5.1 — إضافة نقطة النهاية للفحص الصحي (Health Check Endpoint)
+# 5.1 — add health check endpoint
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
-# 5.2 — نقطة التنبؤ ومعالجة الأخطاء بشكل مرن
+# 5.2 — prediction endpoint with flexible error handling
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
@@ -39,10 +39,10 @@ def predict():
         if not data:
             return jsonify({"status": "error", "message": "No JSON payload received"}), 400
         
-        # إنشاء قاموس يحتوي على قيم افتراضية لجميع الأعمدة
+        # create a dictionary with default values for all columns
         input_data = {col: 0.0 for col in FEATURES_COLUMNS}
         
-        # ملء القيم الأساسية التي يرسلها المستخدم مع التحقق من النوع البياني وتحويله
+        # fill in base values sent by user with type checking and conversion
         try:
             input_data['Hour'] = float(data.get('Hour', 12))
             input_data['Temperature_C'] = float(data.get('Temperature_C', 25.0))
@@ -58,7 +58,7 @@ def predict():
         except ValueError as val_err:
             return jsonify({"status": "error", "message": f"Invalid numerical value: {str(val_err)}"}), 400
         
-        # معالجة المتغيرات الفئوية وتفعيل الـ Dummy المناسب
+        # handle categorical variables and enable the appropriate dummy feature
         categories = {
             "Season": "Season_",
             "Library_Branch": "Library_Branch_",
@@ -74,10 +74,10 @@ def predict():
                 if col_name in input_data:
                     input_data[col_name] = 1.0
 
-        # تحويل القاموس إلى DataFrame للحفاظ على ترتيب الأعمدة الدقيق للـ Scaler
+        # convert dictionary to DataFrame to preserve exact column order for scaler
         df_input = pd.DataFrame([input_data])[FEATURES_COLUMNS]
         
-        # تطبيق التحجيم (Scaling) والتوقع
+        # apply scaling and predict
         features_scaled = scaler.transform(df_input)
         prediction = model.predict(features_scaled)
         
@@ -97,6 +97,6 @@ def predict():
         }), 400
 
 if __name__ == "__main__":
-    # 5.3 — قراءة المنفذ من متغير بيئي (PORT) والافتراضي هو 5000
+    # 5.3 — read port from environment variable (PORT), default is 5000
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
