@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import joblib
 import numpy as np
 import pandas as pd
+import os
 
 app = Flask(__name__)
 
@@ -25,28 +26,39 @@ FEATURES_COLUMNS = [
     'Temperature_Bin_Warm', 'Temperature_Bin_Hot'
 ]
 
+# 5.1 — إضافة نقطة النهاية للفحص الصحي (Health Check Endpoint)
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"}), 200
+
+# 5.2 — نقطة التنبؤ ومعالجة الأخطاء بشكل مرن
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "No JSON payload received"}), 400
         
-        # إنشاء قاموس يحتوي على قيم افتراضية (أصفار) لجميع الأعمدة الـ 40
+        # إنشاء قاموس يحتوي على قيم افتراضية لجميع الأعمدة
         input_data = {col: 0.0 for col in FEATURES_COLUMNS}
         
-        # ملء القيم الأساسية التي يرسلها المستخدم (مع قيم افتراضية منطقية إذا لم تُرسل)
-        input_data['Hour'] = float(data.get('Hour', 12))
-        input_data['Temperature_C'] = float(data.get('Temperature_C', 25.0))
-        input_data['Humidity_pct'] = float(data.get('Humidity_pct', 50.0))
-        input_data['Wind_Speed_ms'] = float(data.get('Wind_Speed_ms', 1.5))
-        input_data['Visibility_m'] = float(data.get('Visibility_m', 2000.0))
-        input_data['Solar_Radiation_MJm2'] = float(data.get('Solar_Radiation_MJm2', 0.0))
-        input_data['Rainfall_mm'] = float(data.get('Rainfall_mm', 0.0))
-        input_data['Month'] = float(data.get('Month', 7)) # شهر يوليو كمثال
-        input_data['Day'] = float(data.get('Day', 16))
-        input_data['Is_Peak_Hour'] = float(data.get('Is_Peak_Hour', 0))
-        input_data['Is_Weekend'] = float(data.get('Is_Weekend', 0))
+        # ملء القيم الأساسية التي يرسلها المستخدم مع التحقق من النوع البياني وتحويله
+        try:
+            input_data['Hour'] = float(data.get('Hour', 12))
+            input_data['Temperature_C'] = float(data.get('Temperature_C', 25.0))
+            input_data['Humidity_pct'] = float(data.get('Humidity_pct', 50.0))
+            input_data['Wind_Speed_ms'] = float(data.get('Wind_Speed_ms', 1.5))
+            input_data['Visibility_m'] = float(data.get('Visibility_m', 2000.0))
+            input_data['Solar_Radiation_MJm2'] = float(data.get('Solar_Radiation_MJm2', 0.0))
+            input_data['Rainfall_mm'] = float(data.get('Rainfall_mm', 0.0))
+            input_data['Month'] = float(data.get('Month', 7)) 
+            input_data['Day'] = float(data.get('Day', 16))
+            input_data['Is_Peak_Hour'] = float(data.get('Is_Peak_Hour', 0))
+            input_data['Is_Weekend'] = float(data.get('Is_Weekend', 0))
+        except ValueError as val_err:
+            return jsonify({"status": "error", "message": f"Invalid numerical value: {str(val_err)}"}), 400
         
-        # معالجة المتغيرات الفئوية وتفعيل العمود المناسب (One-Hot Encoding)
+        # معالجة المتغيرات الفئوية وتفعيل الـ Dummy المناسب
         categories = {
             "Season": "Season_",
             "Library_Branch": "Library_Branch_",
@@ -65,13 +77,10 @@ def predict():
         # تحويل القاموس إلى DataFrame للحفاظ على ترتيب الأعمدة الدقيق للـ Scaler
         df_input = pd.DataFrame([input_data])[FEATURES_COLUMNS]
         
-        # تطبيق التحجيم (Scaling)
+        # تطبيق التحجيم (Scaling) والتوقع
         features_scaled = scaler.transform(df_input)
-        
-        # التنبؤ باستخدام النموذج
         prediction = model.predict(features_scaled)
         
-        # في حال كان ناتج الشبكة العصبية مصفوفة ببعدين، نأخذ القيمة الأولى
         predicted_val = prediction[0]
         if hasattr(predicted_val, '__len__'):
             predicted_val = predicted_val[0]
@@ -84,8 +93,10 @@ def predict():
     except Exception as e:
         return jsonify({
             "status": "error",
-            "message": str(e)
+            "message": f"An unexpected error occurred: {str(e)}"
         }), 400
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    # 5.3 — قراءة المنفذ من متغير بيئي (PORT) والافتراضي هو 5000
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
