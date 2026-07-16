@@ -14,7 +14,7 @@ This repository contains an end-to-end Machine Learning pipeline to predict libr
 ## How to Run Locally
 
 ### 1. Install dependencies:
-`ash
+
 pip install -r requirements.txt
 
 2. Run the FastAPI Application:
